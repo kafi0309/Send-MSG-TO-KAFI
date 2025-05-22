@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Kafi's Message Inbox</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #fff0f6; padding: 2rem; }
+    .message { border: 1px solid #ff69b4; margin-bottom: 1rem; padding: 1rem; border-radius: 8px; display: flex; align-items: center; gap: 10px; }
+    .name { font-weight: bold; color: #a60055; }
+    .text { margin-top: 0.5rem; flex-grow: 1; }
+    .time { font-size: 0.8rem; color: #999; margin-top: 0.5rem; }
+    #loginDiv { margin-bottom: 2rem; }
+    #controls { margin-bottom: 1rem; }
+    button {
+      background: #ff69b4;
+      color: white;
+      border: none;
+      padding: 0.5rem 1rem;
+      margin-right: 10px;
+      cursor: pointer;
+      border-radius: 5px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Login form -->
+  <div id="loginDiv">
+    <h3>Login to Inbox</h3>
+    <input type="email" id="email" placeholder="Email" /><br />
+    <input type="password" id="password" placeholder="Password" /><br />
+    <button onclick="login()">Login</button>
+    <p id="loginStatus" style="color:red;"></p>
+  </div>
+
+  <!-- Messages container, hidden until logged in -->
+  <div id="messagesDiv" style="display:none;">
+    <h2>Kafi's Message Inbox</h2>
+    <div id="controls">
+      <button onclick="deleteSelected()">Delete Selected</button>
+      <button onclick="deleteAll()">Delete All</button>
+    </div>
+    <div id="messages"></div>
+    <button onclick="logout()">Logout</button>
+  </div>
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyDP5kb8yoqCRBC2_MZUfZIy16MBCF7RV78",
+      authDomain: "kafimessageinbox.firebaseapp.com",
+      projectId: "kafimessageinbox",
+      storageBucket: "kafimessageinbox.appspot.com",
+      messagingSenderId: "127827350299",
+      appId: "1:127827350299:web:e6c8861ae398ae371b79be"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+
+    function login() {
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      auth.signInWithEmailAndPassword(email, password)
+        .then(() => {
+          document.getElementById('loginStatus').textContent = '';
+        })
+        .catch(error => {
+          document.getElementById('loginStatus').textContent = error.message;
+        });
+    }
+
+    function logout() {
+      auth.signOut();
+    }
+
+    auth.onAuthStateChanged(user => {
+      if (user) {
+        document.getElementById('loginDiv').style.display = 'none';
+        document.getElementById('messagesDiv').style.display = 'block';
+        loadMessages();
+      } else {
+        document.getElementById('loginDiv').style.display = 'block';
+        document.getElementById('messagesDiv').style.display = 'none';
+      }
+    });
+
+    function loadMessages() {
+      const messagesDiv = document.getElementById('messages');
+      db.collection('messages').orderBy('timestamp', 'desc').onSnapshot(snapshot => {
+        messagesDiv.innerHTML = '';
+        snapshot.forEach(doc => {
+          const msg = doc.data();
+          const id = doc.id;
+          const time = msg.timestamp ? new Date(msg.timestamp.seconds * 1000).toLocaleString() : '';
+          messagesDiv.innerHTML += `
+            <div class="message">
+              <input type="checkbox" class="msgCheckbox" data-id="${id}" />
+              <div>
+                <div class="name">${msg.name}</div>
+                <div class="text">${msg.message}</div>
+                <div class="time">${time}</div>
+              </div>
+            </div>
+          `;
+        });
+      });
+    }
+
+    function deleteSelected() {
+      const checkboxes = document.querySelectorAll('.msgCheckbox:checked');
+      if (checkboxes.length === 0) {
+        alert('Please select at least one message to delete.');
+        return;
+      }
+      if (!confirm(`Are you sure you want to delete ${checkboxes.length} selected message(s)?`)) return;
+      checkboxes.forEach(cb => {
+        const docId = cb.getAttribute('data-id');
+        db.collection('messages').doc(docId).delete().catch(error => {
+          console.error('Error deleting message:', error);
+          alert('Error deleting some messages. Check console.');
+        });
+      });
+    }
+
+    function deleteAll() {
+      if (!confirm('Are you sure you want to delete ALL messages? This action cannot be undone.')) return;
+      db.collection('messages').get().then(snapshot => {
+        const batch = db.batch();
+        snapshot.forEach(doc => {
+          batch.delete(doc.ref);
+        });
+        return batch.commit();
+      }).then(() => {
+        alert('All messages deleted successfully.');
+      }).catch(error => {
+        console.error('Error deleting all messages:', error);
+        alert('Error deleting all messages. Check console.');
+      });
+    }
+  </script>
+</body>
+</html>

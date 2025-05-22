@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Send Message to Kafi</title>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; background: #ffc0cb; padding: 2rem; }
+    input, textarea, button { display: block; width: 300px; margin: 1rem 0; padding: 0.5rem; }
+    button { background: #ff69b4; color: white; border: none; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h2>Send Message to Kafi</h2>
+  <input type="text" id="name" placeholder="Your Name" required />
+  <textarea id="message" rows="4" placeholder="Your message..." required></textarea>
+  <button onclick="sendMessage()">Send</button>
+
+  <p id="status"></p>
+
+  <script>
+    // Replace with your actual Firebase config
+    const firebaseConfig = {
+  apiKey: "AIzaSyDP5kb8yoqCRBC2_MZUfZIy16MBCF7RV78",
+  authDomain: "kafimessageinbox.firebaseapp.com",
+  projectId: "kafimessageinbox",
+  storageBucket: "kafimessageinbox.firebasestorage.app",
+  messagingSenderId: "127827350299",
+  appId: "1:127827350299:web:e6c8861ae398ae371b79be"
+};
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    function sendMessage() {
+      const name = document.getElementById('name').value.trim();
+      const message = document.getElementById('message').value.trim();
+      if (!name || !message) {
+        alert('Please enter your name and message.');
+        return;
+      }
+      db.collection('messages').add({
+        name: name,
+        message: message,
+        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+      }).then(() => {
+        document.getElementById('status').textContent = 'Message sent successfully!';
+        document.getElementById('name').value = '';
+        document.getElementById('message').value = '';
+      }).catch((error) => {
+        document.getElementById('status').textContent = 'Error sending message: ' + error;
+      });
+    }
+  </script>
+</body>
+</html>
+
