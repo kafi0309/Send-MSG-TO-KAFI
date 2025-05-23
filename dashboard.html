@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Dashboard</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 2rem;
+      max-width: 600px;
+      margin: auto;
+      background: #ffc0cb;
+      text-align: center;
+    }
+    button {
+      background: #ff69b4;
+      color: white;
+      border: none;
+      padding: 0.7rem 1.2rem;
+      font-size: 1rem;
+      cursor: pointer;
+      border-radius: 6px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Welcome to Dashboard!</h1>
+  <button id="logoutBtn">Logout</button>
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+
+  <script>
+    // Your Firebase config
+    const firebaseConfig = {
+      apiKey: "AIzaSyDP5kb8yoqCRBC2_MZUfZIy16MBCF7RV78",
+      authDomain: "kafimessageinbox.firebaseapp.com",
+      projectId: "kafimessageinbox",
+      storageBucket: "kafimessageinbox.appspot.com",
+      messagingSenderId: "127827350299",
+      appId: "1:127827350299:web:e6c8861ae398ae371b79be"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+
+    // Logout button handler
+    document.getElementById('logoutBtn').addEventListener('click', () => {
+      auth.signOut().then(() => {
+        window.location.href = 'index.html';  // Redirect to main login/index page
+      }).catch(err => {
+        alert('Error during logout: ' + err.message);
+      });
+    });
+
+    // Optional: Redirect to login if no user is logged in
+    auth.onAuthStateChanged(user => {
+      if (!user) {
+        window.location.href = 'index.html';
+      }
+    });
+  </script>
+</body>
+</html>

@@ -302,12 +302,26 @@
             checkbox.setAttribute('data-id', id);
             checkbox.style.marginRight = '10px';
 
-            // Text content
-            const textSpan = document.createElement('span');
-            textSpan.textContent = `${msg.from === 'kafi' ? 'Kafi' : 'User'}: ${msg.text} (${time})`;
+            // Message text
+            const textDiv = document.createElement('div');
+            textDiv.textContent = msg.text;
+            messageDiv.appendChild(textDiv);
 
-            messageDiv.appendChild(checkbox);
-            messageDiv.appendChild(textSpan);
+            // Timestamp below message text
+            const timeDiv = document.createElement('div');
+            timeDiv.className = 'timestamp';
+            timeDiv.textContent = time;
+            messageDiv.appendChild(timeDiv);
+
+            // Sender below timestamp
+            const senderDiv = document.createElement('div');
+            senderDiv.style.fontSize = '0.8rem';
+            senderDiv.style.fontWeight = 'bold';
+            senderDiv.style.marginTop = '4px';
+            senderDiv.textContent = msg.from === 'kafi' ? 'Kafi' : 'User';
+            messageDiv.appendChild(senderDiv);
+
+            messageDiv.insertBefore(checkbox, messageDiv.firstChild);
 
             chatMessagesDiv.appendChild(messageDiv);
           });
@@ -389,5 +403,6 @@
   </script>
 </body>
 </html>
+
 
 
