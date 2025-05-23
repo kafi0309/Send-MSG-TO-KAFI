@@ -5,54 +5,278 @@
   <title>Send Message to Kafi</title>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
   <style>
-    body { font-family: Arial, sans-serif; background: #ffc0cb; padding: 2rem; }
-    input, textarea, button { display: block; width: 300px; margin: 1rem 0; padding: 0.5rem; }
+    body { font-family: Arial, sans-serif; background: #ffc0cb; padding: 2rem; max-width: 600px; margin: auto; }
+    input, textarea, button { display: block; width: 100%; max-width: 100%; margin: 1rem 0; padding: 0.5rem; box-sizing: border-box; }
     button { background: #ff69b4; color: white; border: none; cursor: pointer; }
+    #chatMessages { border: 1px solid #ccc; height: 300px; overflow-y: auto; padding: 10px; margin-bottom: 10px; background: white; }
+    .message {
+      margin-bottom: 10px;
+      max-width: 75%;
+      padding: 8px 12px;
+      border-radius: 12px;
+      position: relative;
+      clear: both;
+    }
+    .message.user {
+      background: #f1f0f0;
+      color: #333;
+      float: left;
+      text-align: left;
+      clear: both;
+    }
+    .message.kafi {
+      background: #d6336c;
+      color: white;
+      float: right;
+      text-align: right;
+      clear: both;
+    }
+    .timestamp {
+      font-size: 0.7rem;
+      color: #666;
+      margin-top: 4px;
+    }
+    .new-message-indicator {
+      width: 10px;
+      height: 10px;
+      background-color: #d6336c;
+      border-radius: 50%;
+      display: inline-block;
+      margin-left: 5px;
+      vertical-align: middle;
+    }
   </style>
 </head>
 <body>
-  <h2>Send Message to Kafi</h2>
-  <input type="text" id="name" placeholder="Your Name" required />
-  <textarea id="message" rows="4" placeholder="Your message..." required></textarea>
-  <button onclick="sendMessage()">Send</button>
 
-  <p id="status"></p>
+  <!-- Free message sending (no login required) -->
+  <div id="freeMessageSection">
+    <h2>Send Message to Kafi</h2>
+    <p>Anyone can send a message here without signing up or logging in.</p>
+    <input type="text" id="name" placeholder="Your Name" />
+    <textarea id="message" rows="4" placeholder="Your message..."></textarea>
+    <button onclick="sendMessageFree()">Send</button>
+    <p id="status"></p>
+  </div>
 
-  <script>
-    // Replace with your actual Firebase config
-    const firebaseConfig = {
-  apiKey: "AIzaSyDP5kb8yoqCRBC2_MZUfZIy16MBCF7RV78",
-  authDomain: "kafimessageinbox.firebaseapp.com",
-  projectId: "kafimessageinbox",
-  storageBucket: "kafimessageinbox.firebasestorage.app",
-  messagingSenderId: "127827350299",
-  appId: "1:127827350299:web:e6c8861ae398ae371b79be"
-};
+  <hr />
 
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.firestore();
+  <div id="signUpDiv">
+    <h3>Get Messages from Kafi (Sign Up)</h3>
+    <p>Sign up here to receive messages directly from Kafi. Your password and email are kept private.</p>
+    <input type="text" id="subName" placeholder="Your Name" />
+    <input type="email" id="subEmail" placeholder="Your Email" />
+    <input type="password" id="subPassword" placeholder="Password" />
+    <button onclick="signUp()">Sign Up</button>
+    <p id="signUpStatus" style="color:red;"></p>
+  </div>
 
-    function sendMessage() {
-      const name = document.getElementById('name').value.trim();
-      const message = document.getElementById('message').value.trim();
-      if (!name || !message) {
-        alert('Please enter your name and message.');
-        return;
-      }
-      db.collection('messages').add({
-        name: name,
-        message: message,
-        timestamp: firebase.firestore.FieldValue.serverTimestamp()
-      }).then(() => {
-        document.getElementById('status').textContent = 'Message sent successfully!';
-        document.getElementById('name').value = '';
-        document.getElementById('message').value = '';
-      }).catch((error) => {
-        document.getElementById('status').textContent = 'Error sending message: ' + error;
-      });
+  <div id="loginDiv" style="display:none;">
+    <h3>Subscriber Login</h3>
+    <p>Already signed up? Log in here to see and chat with Kafi.</p>
+    <input type="email" id="loginEmail" placeholder="Email" />
+    <input type="password" id="loginPassword" placeholder="Password" />
+    <button onclick="login()">Login</button>
+    <p id="loginStatus" style="color:red;"></p>
+  </div>
+
+  <div id="chatDiv" style="display:none;">
+    <h3>Chat with Kafi</h3>
+    <div id="chatMessages"></div>
+    <input type="text" id="chatInput" placeholder="Type your message" />
+    <button onclick="sendMessage()">Send</button>
+    <button onclick="logout()" style="background:#999; margin-top:10px;">Logout</button>
+  </div>
+
+<script>
+  // Your Firebase config
+  const firebaseConfig = {
+    apiKey: "AIzaSyDP5kb8yoqCRBC2_MZUfZIy16MBCF7RV78",
+    authDomain: "kafimessageinbox.firebaseapp.com",
+    projectId: "kafimessageinbox",
+    storageBucket: "kafimessageinbox.firebasestorage.app",
+    messagingSenderId: "127827350299",
+    appId: "1:127827350299:web:e6c8861ae398ae371b79be"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+  const db = firebase.firestore();
+
+  let currentUserId = null;
+
+  // Show/hide UI sections based on login state
+      firebase.auth.onAuthStateChanged(user => {
+      if (user) {
+      currentUserId = user.uid;
+
+      // Hide free message, sign up, login sections
+      document.getElementById('freeMessageSection').style.display = 'none';
+      document.getElementById('signUpDiv').style.display = 'none';
+      document.getElementById('loginDiv').style.display = 'none';
+      document.getElementById('signUpStatus').textContent = '';
+      document.getElementById('loginStatus').textContent = '';
+
+      // Show chat section
+      document.getElementById('chatDiv').style.display = 'block';
+
+      loadConversation();
+    } else {
+      currentUserId = null;
+
+      // Show free message, sign up, login sections
+      document.getElementById('freeMessageSection').style.display = 'block';
+      document.getElementById('signUpDiv').style.display = 'block';
+      document.getElementById('loginDiv').style.display = 'block';
+
+      // Hide chat
+      document.getElementById('chatDiv').style.display = 'none';
+
+      // Clear chat UI
+      clearChat();
     }
-  </script>
+  });
+
+  // Free message sending (anyone)
+  function sendMessageFree() {
+    const name = document.getElementById('name').value.trim();
+    const message = document.getElementById('message').value.trim();
+    if (!name || !message) {
+      alert('Please enter your name and message.');
+      return;
+    }
+    db.collection('messages').add({
+      name: name,
+      message: message,
+      timestamp: firebase.firestore.FieldValue.serverTimestamp()
+    }).then(() => {
+      document.getElementById('status').textContent = 'Message sent successfully!';
+      document.getElementById('name').value = '';
+      document.getElementById('message').value = '';
+    }).catch(error => {
+      document.getElementById('status').textContent = 'Error sending message: ' + error.message;
+    });
+  }
+
+  // Sign up function
+  function signUp() {
+    const name = document.getElementById('subName').value.trim();
+    const email = document.getElementById('subEmail').value.trim();
+    const password = document.getElementById('subPassword').value;
+    if (!name || !email || !password) {
+      document.getElementById('signUpStatus').textContent = 'Please fill in all fields.';
+      return;
+    }
+    auth.createUserWithEmailAndPassword(email, password)
+      .then(userCredential => {
+        const user = userCredential.user;
+        return db.collection('subscribers').doc(user.uid).set({
+          name: name,
+          signupTime: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      })
+      .then(() => {
+        document.getElementById('signUpStatus').textContent = 'Sign-up successful! You can now log in.';
+        document.getElementById('subName').value = '';
+        document.getElementById('subEmail').value = '';
+        document.getElementById('subPassword').value = '';
+
+        // Show login section now so user can log in
+        document.getElementById('loginDiv').style.display = 'block';
+      })
+      .catch(error => {
+        document.getElementById('signUpStatus').textContent = error.message;
+      });
+  }
+
+  // Login function
+  function login() {
+    const email = document.getElementById('loginEmail').value.trim();
+    const password = document.getElementById('loginPassword').value;
+    if (!email || !password) {
+      document.getElementById('loginStatus').textContent = 'Please enter email and password.';
+      return;
+    }
+    auth.signInWithEmailAndPassword(email, password)
+      .then(() => {
+        document.getElementById('loginStatus').textContent = '';
+      })
+      .catch(error => {
+        document.getElementById('loginStatus').textContent = error.message;
+      });
+  }
+
+  // Logout function
+  function logout() {
+    auth.signOut();
+  }
+
+  // Load subscriber conversation messages
+  function loadConversation() {
+    const chatMessagesDiv = document.getElementById('chatMessages');
+    chatMessagesDiv.innerHTML = 'Loading messages...';
+    db.collection('conversations').doc(currentUserId).collection('messages')
+      .orderBy('timestamp', 'asc')
+      .onSnapshot(snapshot => {
+        chatMessagesDiv.innerHTML = '';
+        snapshot.forEach(doc => {
+          const msg = doc.data();
+          const time = msg.timestamp ? new Date(msg.timestamp.seconds * 1000).toLocaleString() : '';
+
+          const div = document.createElement('div');
+          div.className = 'message ' + (msg.from === 'kafi' ? 'kafi' : 'user');
+          div.textContent = `${msg.from === 'kafi' ? 'Kafi' : 'You'}: ${msg.text}`;
+
+          // Timestamp smaller below
+          const timestampSpan = document.createElement('div');
+          timestampSpan.className = 'timestamp';
+          timestampSpan.textContent = time;
+          div.appendChild(timestampSpan);
+
+          // New message indicator for unread user messages
+          if (msg.from !== 'kafi' && !msg.read) {
+            const newIndicator = document.createElement('span');
+            newIndicator.className = 'new-message-indicator';
+            div.appendChild(newIndicator);
+
+            // Mark message as read after showing indicator
+            db.collection('conversations').doc(currentUserId).collection('messages').doc(doc.id).update({
+              read: true
+            }).catch(console.error);
+          }
+
+          chatMessagesDiv.appendChild(div);
+        });
+        chatMessagesDiv.scrollTop = chatMessagesDiv.scrollHeight;
+      });
+  }
+
+  // Send message as subscriber
+  function sendMessage() {
+    const input = document.getElementById('chatInput');
+    const text = input.value.trim();
+    if (!text) return alert('Please enter a message.');
+
+    db.collection('conversations').doc(currentUserId).collection('messages').add({
+      from: 'user',
+      text: text,
+      read: false,  // Mark new messages from user as unread
+      timestamp: firebase.firestore.FieldValue.serverTimestamp() // Timestamp
+    }).then(() => {
+      input.value = '';
+    }).catch(error => {
+      alert('Error sending message: ' + error.message);
+    });
+  }
+
+  function clearChat() {
+    document.getElementById('chatMessages').innerHTML = '';
+    document.getElementById('chatInput').value = '';
+  }
+</script>
 </body>
 </html>
+
 

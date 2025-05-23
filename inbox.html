@@ -5,10 +5,43 @@
   <title>Kafi's Message Inbox</title>
   <style>
     body { font-family: Arial, sans-serif; background: #fff0f6; padding: 2rem; }
-    .message { border: 1px solid #ff69b4; margin-bottom: 1rem; padding: 1rem; border-radius: 8px; display: flex; align-items: center; gap: 10px; }
-    .name { font-weight: bold; color: #a60055; }
-    .text { margin-top: 0.5rem; flex-grow: 1; }
-    .time { font-size: 0.8rem; color: #999; margin-top: 0.5rem; }
+    .message {
+      margin-bottom: 10px;
+      max-width: 70%;
+      padding: 8px 12px;
+      border-radius: 12px;
+      position: relative;
+      clear: both;
+      display: block;
+    }
+    .message.user {
+      background: #f1f0f0;
+      color: #333;
+      float: left;
+      text-align: left;
+      clear: both;
+    }
+    .message.kafi {
+      background: #d6336c;
+      color: white;
+      float: right;
+      text-align: right;
+      clear: both;
+    }
+    .timestamp {
+      font-size: 0.7rem;
+      color: #666;
+      margin-top: 4px;
+    }
+    .new-message-indicator {
+      width: 10px;
+      height: 10px;
+      background-color: #d6336c;
+      border-radius: 50%;
+      display: inline-block;
+      vertical-align: middle;
+      margin-left: 5px;
+    }
     #loginDiv { margin-bottom: 2rem; }
     #controls { margin-bottom: 1rem; }
     button {
@@ -19,6 +52,19 @@
       margin-right: 10px;
       cursor: pointer;
       border-radius: 5px;
+    }
+    #subscriberList ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    #subscriberList li {
+      cursor: pointer;
+      padding: 5px;
+      border-bottom: 1px solid #ff69b4;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
   </style>
 </head>
@@ -34,14 +80,35 @@
   </div>
 
   <!-- Messages container, hidden until logged in -->
-  <div id="messagesDiv" style="display:none;">
-    <h2>Kafi's Message Inbox</h2>
-    <div id="controls">
-      <button onclick="deleteSelected()">Delete Selected</button>
-      <button onclick="deleteAll()">Delete All</button>
+  <div id="messagesDiv" style="display:none; display: flex; gap: 20px;">
+    <div style="flex: 3;">
+
+      <!-- Chat with subscriber UI -->
+      <div id="chatWithSubscriber" style="display:none; border:1px solid #ff69b4; padding:10px; margin-top:20px;">
+        <h3>Chat with <span id="chatSubscriberName"></span></h3>
+        <div id="chatMessages" style="height: 300px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; margin-bottom: 10px;"></div>
+        <input type="text" id="chatInput" placeholder="Type your message" style="width: 80%;" />
+        <button onclick="sendMessageToSubscriber()">Send</button>
+        <button onclick="showFreeMessages()" style="margin-top:10px;">Back to Free Messages</button>
+      </div>
+
+      <h2>Kafi's Message Inbox</h2>
+      <div id="controls">
+        <button onclick="deleteSelected()">Delete Selected</button>
+        <button onclick="deleteAll()">Delete All</button>
+      </div>
+      <div id="messages" style="height: 400px; overflow-y: auto; border: 1px solid #ccc; padding: 10px;"></div>
+      <button onclick="logout()">Logout</button>
     </div>
-    <div id="messages"></div>
-    <button onclick="logout()">Logout</button>
+
+    <div id="subscriberList" style="flex: 1; border:1px solid #ff69b4; padding:10px; height: 400px; overflow-y: auto;">
+      <h3>Subscribers</h3>
+      <div id="subscriberControls" style="margin-bottom: 10px;">
+        <button onclick="deleteSelectedSubscriberMessages()">Delete Selected</button>
+        <button onclick="deleteAllSubscriberMessages()">Delete All</button>
+      </div>
+      <ul id="subscribersUl"></ul>
+    </div>
   </div>
 
   <!-- Firebase SDKs -->
@@ -63,6 +130,8 @@
     const auth = firebase.auth();
     const db = firebase.firestore();
 
+    let currentSubscriberId = null;
+
     function login() {
       const email = document.getElementById('email').value;
       const password = document.getElementById('password').value;
@@ -82,8 +151,10 @@
     auth.onAuthStateChanged(user => {
       if (user) {
         document.getElementById('loginDiv').style.display = 'none';
-        document.getElementById('messagesDiv').style.display = 'block';
+        document.getElementById('messagesDiv').style.display = 'flex';
         loadMessages();
+        loadSubscribers();
+        showFreeMessages();
       } else {
         document.getElementById('loginDiv').style.display = 'block';
         document.getElementById('messagesDiv').style.display = 'none';
@@ -143,6 +214,180 @@
         alert('Error deleting all messages. Check console.');
       });
     }
+
+    async function checkUnreadMessagesForSubscriber(subscriberId) {
+      try {
+        const unreadQuery = await db.collection('conversations')
+          .doc(subscriberId)
+          .collection('messages')
+          .where('read', '==', false)
+          .get();
+        return !unreadQuery.empty;
+      } catch (error) {
+        console.error('Error checking unread messages:', error);
+        return false;
+      }
+    }
+
+    async function loadSubscribers() {
+      const subscribersUl = document.getElementById('subscribersUl');
+      db.collection('subscribers').orderBy('signupTime', 'desc').onSnapshot(async snapshot => {
+        subscribersUl.innerHTML = ''; // Clear list
+        const subscriberPromises = snapshot.docs.map(async (doc) => {
+          const sub = doc.data();
+          const signupDate = sub.signupTime ? new Date(sub.signupTime.seconds * 1000).toLocaleString() : 'Unknown date';
+
+          const hasUnread = await checkUnreadMessagesForSubscriber(doc.id);
+
+          const li = document.createElement('li');
+          li.style.cursor = 'pointer';
+          li.style.padding = '5px';
+          li.style.borderBottom = '1px solid #ff69b4';
+          li.onclick = () => selectSubscriber(doc.id, sub.name);
+
+          li.textContent = `${sub.name} (Signed up: ${signupDate})`;
+
+          if (hasUnread) {
+            const redDot = document.createElement('span');
+            redDot.className = 'new-message-indicator';
+            redDot.style.marginLeft = '10px';
+            li.appendChild(redDot);
+          }
+
+          return li;
+        });
+
+        const liElements = await Promise.all(subscriberPromises);
+        liElements.forEach(li => subscribersUl.appendChild(li));
+      });
+    }
+
+    function showFreeMessages() {
+      document.getElementById('chatWithSubscriber').style.display = 'none'; // hide subscriber chat
+      document.getElementById('messages').style.display = 'block';          // show free messages
+    }
+
+    function showSubscriberChat() {
+      document.getElementById('chatWithSubscriber').style.display = 'block'; // show subscriber chat
+      document.getElementById('messages').style.display = 'none';            // hide free messages
+    }
+
+    function selectSubscriber(subscriberId, subscriberName) {
+      currentSubscriberId = subscriberId;
+      document.getElementById('chatSubscriberName').textContent = subscriberName;
+      showSubscriberChat();
+      loadSubscriberConversation(subscriberId);
+    }
+
+    function loadSubscriberConversation(subscriberId) {
+      const chatMessagesDiv = document.getElementById('chatMessages');
+      chatMessagesDiv.innerHTML = 'Loading messages...';
+
+      db.collection('conversations').doc(subscriberId).collection('messages')
+        .orderBy('timestamp', 'asc')
+        .onSnapshot(snapshot => {
+          chatMessagesDiv.innerHTML = '';
+          snapshot.forEach(doc => {
+            const msg = doc.data();
+            const id = doc.id;
+            const time = msg.timestamp ? new Date(msg.timestamp.seconds * 1000).toLocaleString() : '';
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message ' + (msg.from === 'kafi' ? 'kafi' : 'user');
+            messageDiv.style.marginBottom = '8px';
+
+            // Add checkbox for selecting message
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.className = 'subMsgCheckbox';
+            checkbox.setAttribute('data-id', id);
+            checkbox.style.marginRight = '10px';
+
+            // Text content
+            const textSpan = document.createElement('span');
+            textSpan.textContent = `${msg.from === 'kafi' ? 'Kafi' : 'User'}: ${msg.text} (${time})`;
+
+            messageDiv.appendChild(checkbox);
+            messageDiv.appendChild(textSpan);
+
+            chatMessagesDiv.appendChild(messageDiv);
+          });
+          chatMessagesDiv.scrollTop = chatMessagesDiv.scrollHeight;
+        });
+    }
+
+    function sendMessageToSubscriber() {
+      const input = document.getElementById('chatInput');
+      const text = input.value.trim();
+      if (!text) return alert('Please enter a message.');
+
+      if (!currentSubscriberId) return alert('No subscriber selected.');
+
+      db.collection('conversations').doc(currentSubscriberId).collection('messages').add({
+        from: 'kafi',
+        text: text,
+        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+      }).then(() => {
+        input.value = '';
+      }).catch(error => {
+        alert('Error sending message: ' + error.message);
+      });
+    }
+
+    function deleteSelectedSubscriberMessages() {
+      if (!currentSubscriberId) {
+        alert('No subscriber selected.');
+        return;
+      }
+
+      const checkboxes = document.querySelectorAll('.subMsgCheckbox:checked');
+      if (checkboxes.length === 0) {
+        alert('Please select at least one message to delete.');
+        return;
+      }
+      if (!confirm(`Are you sure you want to delete ${checkboxes.length} selected message(s)?`)) return;
+
+      const batch = db.batch();
+      checkboxes.forEach(cb => {
+        const msgId = cb.getAttribute('data-id');
+        const msgRef = db.collection('conversations').doc(currentSubscriberId).collection('messages').doc(msgId);
+        batch.delete(msgRef);
+      });
+
+      batch.commit()
+        .then(() => {
+          alert('Selected messages deleted successfully.');
+        })
+        .catch(error => {
+          console.error('Error deleting messages:', error);
+          alert('Error deleting messages. Check console.');
+        });
+    }
+
+    function deleteAllSubscriberMessages() {
+      if (!currentSubscriberId) {
+        alert('No subscriber selected.');
+        return;
+      }
+      if (!confirm('Are you sure you want to delete ALL messages with this subscriber? This action cannot be undone.')) return;
+
+      db.collection('conversations').doc(currentSubscriberId).collection('messages').get()
+        .then(snapshot => {
+          const batch = db.batch();
+          snapshot.forEach(doc => {
+            batch.delete(doc.ref);
+          });
+          return batch.commit();
+        })
+        .then(() => {
+          alert('All messages deleted successfully.');
+        })
+        .catch(error => {
+          console.error('Error deleting all messages:', error);
+          alert('Error deleting all messages. Check console.');
+        });
+    }
   </script>
 </body>
 </html>
+
+
